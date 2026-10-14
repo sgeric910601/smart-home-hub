@@ -1,4 +1,4 @@
-# 樹莓派私人部署（Tailscale + Cloudflare 網域）
+# 私人部署（樹莓派／Ubuntu + Tailscale + Cloudflare 網域）
 
 目標：手機、平板、電腦用同一個網址（例如 `https://homehub.example.com`）開啟平台，可安裝成 App；只有登入自己 Tailscale 的裝置連得到，網際網路上的其他人即使知道網址也連不進來。
 
@@ -23,9 +23,9 @@
 
 憑證會記錄在公開的 Certificate Transparency 日誌，代表網域名稱會被看見，但仍只解析到私有 IP。
 
-## 1. 準備樹莓派
+## 1. 準備主機
 
-建議 Raspberry Pi 4／5、64 位元 Raspberry Pi OS（Bookworm 以上），網路線接家中路由器，並在路由器替它保留固定區網 IP。
+可用 Ubuntu 22.04／24.04，或 Raspberry Pi 4／5 的 64 位元 Raspberry Pi OS（Bookworm 以上）。主機需 24 小時開機；放在學校、公司等共用網路時，務必完成第 7 節的加固。
 
 1. 安裝 Docker Engine 與 Compose 外掛：依 [Docker 官方 Debian 安裝指南](https://docs.docker.com/engine/install/debian/) 使用官方 apt 套件庫（含 GPG 簽章驗證），完成後執行 `sudo usermod -aG docker $USER` 並重新登入。
 2. 安裝 Tailscale：依 [Tailscale 官方 Linux 指南](https://tailscale.com/kb/1031/install-linux) 加入官方 apt 套件庫，再執行：
@@ -118,7 +118,65 @@ HUB_TAILSCALE_VIEWERS=["family@example.com"]
 
 修改 ACL 前先保留原本允許其他裝置互通的規則，避免把自己鎖在外面；SSH 管理樹莓派也需另外允許 `tcp:22` 或使用 Tailscale SSH。
 
-## 7. 更新與維護
+## 7. 共用網路（學校、公司）加固
+
+主機和陌生人在同一個網段時，除了 Caddy 只綁定 Tailscale，再加上主機防火牆，讓 Ubuntu 上的任何服務都不會對該網段開放。
+
+1. 先確認能透過 Tailscale 連進主機（`ssh <使用者>@<主機的 Tailscale IP>` 或 Tailscale SSH），避免啟用防火牆後把自己鎖在外面。
+2. 啟用 ufw：只允許 Tailscale 網卡進入，並開放 Tailscale 直連用的 UDP 41641。
+
+    ```sh
+    sudo ufw default deny incoming
+    sudo ufw default allow outgoing
+    sudo ufw allow in on tailscale0
+    sudo ufw allow 41641/udp
+    sudo ufw enable
+    sudo ufw status verbose
+    ```
+
+    仍需從學校網段 SSH 時，可暫時加上 `sudo ufw allow 22/tcp`，確認 Tailscale SSH 可用後再移除。
+3. Docker 發布的連接埠（`ports:`）會繞過 ufw。本部署使用主機網路、不發布連接埠；其他容器若要發布，一律寫成 `127.0.0.1:主機埠:容器埠`。
+4. Home Assistant 與本平台裝在同一台時，預設會對所有網卡開放 8123。用 Docker 主機網路時，在 HA 的 `configuration.yaml` 加入以下設定只監聽本機；平台的 `HA_URL` 使用 `http://127.0.0.1:8123`：
+
+    ```yaml
+    http:
+      server_host: 127.0.0.1
+    ```
+
+### 驗證只有 Tailscale 連得到
+
+在主機上確認沒有服務對外監聽：
+
+```sh
+sudo ss -ltnup | grep -vE '127\.0\.0\.1|\[::1\]|100\.|fd7a:'
+```
+
+除了 SSH（若暫時保留）與 Tailscale 自身，不應出現其他服務。接著用一台**在同一網段、沒開 Tailscale** 的裝置測試，下列都應逾時或被拒絕：
+
+```sh
+curl -m 5 https://homehub.example.com
+nc -vz -w 3 <主機的學校 IP> 443
+nc -vz -w 3 <主機的學校 IP> 8000
+nc -vz -w 3 <主機的學校 IP> 8123
+```
+
+再用開啟 Tailscale 的手機開啟網址，應直接進入平台。
+
+學校網路若阻擋 Tailscale 的 UDP 直連，Tailscale 會自動改走加密中繼（DERP），仍可使用，只是延遲較高；`tailscale netcheck` 可查看狀態。
+
+## 8. 設備在其他網路：Tailscale 子網路路由
+
+米家、Electrolux 等可在 Home Assistant 以帳號走雲端的設備，主機放在哪裡都能控制。Tapo 插座、攝影機、紅外線等需要區網連線的設備，可在設備所在的網路放一台常開的小主機（例如樹莓派接該地 Wi-Fi），把那個網段分享進 tailnet：
+
+```sh
+echo 'net.ipv4.ip_forward = 1' | sudo tee /etc/sysctl.d/99-tailscale.conf
+sudo sysctl -p /etc/sysctl.d/99-tailscale.conf
+sudo tailscale up --advertise-routes=192.168.1.0/24
+```
+
+在 Tailscale 後台核准該路由，主機端執行 `sudo tailscale up --accept-routes` 後，Home Assistant 即可用設備的區網 IP 連線。該網路的路由器同樣不需開任何連接埠；路由只在你的 tailnet 內可見，ACL 可再限制只有主機能使用。
+
+## 9. 更新與維護
 
 ```sh
 git pull
