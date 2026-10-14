@@ -1,0 +1,51 @@
+# 私人部署入口：只監聽樹莓派的 Tailscale 位址，憑證以 Cloudflare DNS 驗證取得，不需對外開放任何連接埠。
+{
+	email {$ACME_EMAIL}
+	admin off
+}
+
+{$HUB_DOMAIN} {
+	bind {$HUB_BIND}
+
+	tls {
+		dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+		resolvers 1.1.1.1 1.0.0.1
+	}
+
+	# 第二道防線：即使綁定設定有誤，非 Tailscale 來源仍直接斷線。
+	# 必須寫成第一個 handle：單獨的 abort 在 Caddy 指令順序中排在 handle 之後，不會執行。
+	@outside not remote_ip 100.64.0.0/10 fd7a:115c:a1e0::/48
+	handle @outside {
+		abort
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		X-Frame-Options DENY
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+
+	@backend path /api/* /ws/* /docs /docs/* /openapi.json
+	handle @backend {
+		# 攝影機串流與即時事件不可緩衝。
+		reverse_proxy 127.0.0.1:8000 {
+			flush_interval -1
+		}
+	}
+
+	handle {
+		root * /srv
+		encode zstd gzip
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+		@shell not path /assets/*
+		header @shell Cache-Control "no-cache"
+		@manifest path /manifest.webmanifest
+		header @manifest Content-Type application/manifest+json
+		try_files {path} /index.html
+		file_server
+	}
+}

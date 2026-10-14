@@ -1125,6 +1125,47 @@ nav button.selected {
   font-size: 9px;
   color: var(--muted);
 }
+.tailscale-login {
+  justify-content: flex-start;
+  gap: 12px;
+  text-align: left;
+  font-size: 13px;
+}
+.tailscale-login span {
+  display: grid;
+  gap: 3px;
+}
+.tailscale-login small {
+  font-size: 11px;
+  opacity: 0.8;
+  overflow-wrap: anywhere;
+}
+.login-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 24px 0 -18px;
+}
+.login-divider::before,
+.login-divider::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--border);
+}
+.tailscale-note {
+  margin-top: 20px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--pale);
+}
+/* 觸控裝置的輸入框至少 16px，避免 iOS 點選時自動放大整個頁面。 */
+@media (pointer: coarse) {
+  input,
+  select,
+  textarea {
+    font-size: max(16px, 1em) !important;
+  }
+}
 .boot {
   height: 100vh;
   display: grid;

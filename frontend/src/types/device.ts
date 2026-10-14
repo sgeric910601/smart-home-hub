@@ -62,6 +62,14 @@ export interface Session {
   csrf_token: string;
   mode: "mock" | "real";
 }
+export interface TailscaleStatus {
+  enabled: boolean;
+  available?: boolean;
+  login?: string;
+  device?: string;
+  role?: Session["role"];
+  message?: string;
+}
 export interface Operation {
   operation_id: string;
   occurred_at: string;

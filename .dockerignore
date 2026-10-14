@@ -1,0 +1,11 @@
+# 根目錄建置（deploy/caddy）只需要前端原始碼與 Caddyfile，秘密與本機產物一律排除。
+.git
+.env
+.venv
+deploy/caddy.env
+**/node_modules
+**/dist
+**/__pycache__
+backend/data
+frontend/test-results
+frontend/playwright-report

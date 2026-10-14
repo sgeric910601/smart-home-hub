@@ -91,10 +91,10 @@ class Repository:
                 for row in rows
             ]
 
-    def create_session(self, token_hash: str, csrf: str, role: str):
+    def create_session(self, token_hash: str, csrf: str, role: str, ttl: int):
         with Session(self.engine) as db:
             db.execute(delete(SessionRecord).where(SessionRecord.expires <= time()))
-            db.add(SessionRecord(token_hash=token_hash, csrf=csrf, role=role, expires=time() + 28800))
+            db.add(SessionRecord(token_hash=token_hash, csrf=csrf, role=role, expires=time() + ttl))
             db.commit()
 
     def session(self, token_hash: str):

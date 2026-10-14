@@ -1,4 +1,5 @@
 import asyncio
+import mimetypes
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -18,8 +19,22 @@ from app.services.events import EventBus
 from app.services.imports import ImportService
 from app.services.repository import Repository
 
+# 部分系統的 mimetypes 不認得 .webmanifest，手機安裝 App 時需要正確的類型。
+mimetypes.add_type("application/manifest+json", ".webmanifest")
+BACKEND_PATHS = ("/api/", "/ws/", "/docs", "/openapi.json")
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+
+def cache_policy(path: str):
+    """建置檔名含雜湊可長期快取；API 不留存；其他前端檔案每次向主機確認。"""
+    if path.startswith(BACKEND_PATHS):
+        return "no-store"
+    if path.startswith("/assets/"):
+        return "public, max-age=31536000, immutable"
+    return "no-cache"
+
+
+def create_app(settings: Settings | None = None, tailscale_transport=None) -> FastAPI:
+    # tailscale_transport 供測試替換 tailscaled 回應；正式環境使用設定的 Unix socket。
     settings = settings or Settings()
 
     @asynccontextmanager
@@ -41,6 +56,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.settings, app.state.provider = settings, provider
         app.state.repository, app.state.bus = repository, bus
         app.state.security = Security(settings, repository)
+        app.state.tailscale_transport = tailscale_transport
         app.state.cameras = CameraGateway()
         app.state.devices = DeviceService(provider, repository, bus)
         app.state.imports = ImportService(provider, repository, bus, settings.hub_mode)
@@ -77,7 +93,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.middleware("http")
     async def security_headers(request, call_next):
         response = await call_next(request)
-        response.headers["Cache-Control"] = "no-store"
+        static = settings.hub_serve_frontend and response.status_code < 400
+        response.headers["Cache-Control"] = cache_policy(request.url.path) if static else "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
         return response

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import Hls from "hls.js";
+import type Hls from "hls.js";
 import type { Device } from "../types/device";
 import { liveStreamConfig } from "./liveStream";
 
@@ -30,22 +30,32 @@ export function CameraPlayer({ device }: { device: Device }) {
     const play = () => {
       if (!disposed) void element.play().catch(() => {});
     };
-    if (Hls.isSupported()) {
-      hls = new Hls(liveStreamConfig);
-      hlsPlayer.current = hls;
-      hls.loadSource(url);
-      hls.attachMedia(element);
-      hls.on(Hls.Events.MANIFEST_PARSED, play);
-      hls.on(Hls.Events.ERROR, (_, data) => {
-        if (data.fatal && !disposed) {
-          setFailureReason(data.details);
-          setFailed(true);
+    // 播放器約佔整包一半大小，按下播放才載入，加快手機開啟首頁。
+    import("hls.js/light")
+      .then(({ default: Player }) => {
+        if (disposed) return;
+        if (Player.isSupported()) {
+          hls = new Player(liveStreamConfig);
+          hlsPlayer.current = hls;
+          hls.loadSource(url);
+          hls.attachMedia(element);
+          hls.on(Player.Events.MANIFEST_PARSED, play);
+          hls.on(Player.Events.ERROR, (_, data) => {
+            if (data.fatal && !disposed) {
+              setFailureReason(data.details);
+              setFailed(true);
+            }
+          });
+        } else if (element.canPlayType("application/vnd.apple.mpegurl")) {
+          element.src = url;
+          element.addEventListener("loadedmetadata", play);
         }
+      })
+      .catch(() => {
+        if (disposed) return;
+        setFailureReason("播放元件載入失敗，請重新整理頁面");
+        setFailed(true);
       });
-    } else if (element.canPlayType("application/vnd.apple.mpegurl")) {
-      element.src = url;
-      element.addEventListener("loadedmetadata", play);
-    }
     const reportLatency = () => {
       const delay = hls?.latency;
       setLatency(

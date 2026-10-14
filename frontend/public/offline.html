@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <meta name="theme-color" content="#f6f8f7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#151d1a" media="(prefers-color-scheme: dark)" />
+    <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+    <title>Smart Home Hub · 無法連線</title>
+    <style>
+      :root {
+        --bg: #f6f8f7;
+        --panel: #fff;
+        --text: #25332f;
+        --muted: #83908b;
+        --green: #36856a;
+        color-scheme: light dark;
+        font-family: Inter, "Segoe UI", "PingFang TC", "Microsoft JhengHei", sans-serif;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #151d1a;
+          --panel: #1d2822;
+          --text: #d4e0d9;
+          --muted: #8c9c92;
+          --green: #8cc6a6;
+        }
+      }
+      body {
+        margin: 0;
+        min-height: 100dvh;
+        display: grid;
+        place-items: center;
+        padding: calc(24px + env(safe-area-inset-top)) 20px calc(24px + env(safe-area-inset-bottom));
+        box-sizing: border-box;
+        background: var(--bg);
+        color: var(--text);
+      }
+      main {
+        max-width: 360px;
+        padding: 32px 24px;
+        border-radius: 24px;
+        background: var(--panel);
+        text-align: center;
+        box-shadow: 0 3px 16px #1c493310;
+      }
+      img {
+        width: 64px;
+        height: 64px;
+      }
+      h1 {
+        margin: 16px 0 8px;
+        font-size: 20px;
+      }
+      p {
+        margin: 0 0 8px;
+        color: var(--muted);
+        line-height: 1.6;
+        font-size: 15px;
+      }
+      a {
+        display: inline-block;
+        text-decoration: none;
+        margin-top: 16px;
+        padding: 12px 28px;
+        border-radius: 12px;
+        background: var(--green);
+        color: var(--bg);
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img src="/icons/icon.svg" alt="" />
+      <h1>連不到家庭平台</h1>
+      <p>這個平台只接受 Tailscale 私人網路連線。</p>
+      <p>請確認這台裝置已開啟 Tailscale，且家中主機正在運作。</p>
+      <a href="/">重新連線</a>
+    </main>
+  </body>
+</html>

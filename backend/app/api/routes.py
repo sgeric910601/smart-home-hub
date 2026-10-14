@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 from app.core.errors import HubError
 from app.core.security import COOKIE
+from app.core.tailscale import TailscaleIdentity
 from app.models.device import Action
 
 router = APIRouter()
@@ -30,19 +31,57 @@ async def health(request: Request):
 async def login(body: Login, request: Request, response: Response):
     security = request.app.state.security
     security.origin(request.headers.get("origin"))
-    token, result = security.login(
-        body.username, body.password.get_secret_value(), request.client.host if request.client else "unknown"
-    )
+    token, result = security.login(body.username, body.password.get_secret_value(), client_address(request))
+    set_session_cookie(request, response, token)
+    return result
+
+
+def client_address(request: Request):
+    # 經反向代理時，由 uvicorn --proxy-headers 依受信任代理的 X-Forwarded-For 還原實際來源。
+    return request.client.host if request.client else "unknown"
+
+
+def set_session_cookie(request: Request, response: Response, token: str):
+    settings = request.app.state.settings
     response.set_cookie(
         COOKIE,
         token,
         httponly=True,
         samesite="strict",
-        max_age=28800,
-        secure=security.settings.hub_secure_cookie or request.url.scheme == "https",
+        max_age=settings.hub_session_hours * 3600,
+        secure=settings.hub_secure_cookie or request.url.scheme == "https",
         path="/",
     )
-    return result
+
+
+async def tailscale_identity(request: Request):
+    settings = request.app.state.settings
+    if not settings.hub_tailscale_auth:
+        raise HubError(404, "TAILSCALE_DISABLED", "平台未啟用 Tailscale 登入。")
+    identity = TailscaleIdentity(settings, request.app.state.tailscale_transport)
+    return await identity.resolve(client_address(request))
+
+
+@router.get("/api/auth/tailscale")
+async def tailscale_status(request: Request):
+    if not request.app.state.settings.hub_tailscale_auth:
+        return {"enabled": False}
+    try:
+        identity = await tailscale_identity(request)
+    except HubError as error:
+        return {"enabled": True, "available": False, "message": error.message}
+    return {"enabled": True, "available": True, **identity}
+
+
+@router.post("/api/auth/tailscale")
+async def tailscale_login(request: Request, response: Response):
+    security = request.app.state.security
+    security.origin(request.headers.get("origin"))
+    security.throttle(client_address(request))
+    identity = await tailscale_identity(request)
+    token, result = security.start_session(identity["role"])
+    set_session_cookie(request, response, token)
+    return {**result, "login": identity["login"], "device": identity["device"]}
 
 
 @router.get("/api/auth/me")

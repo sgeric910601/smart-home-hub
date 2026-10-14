@@ -1,12 +1,41 @@
-import { useState, type FormEvent } from "react";
-import { House, ArrowRight, ShieldCheck } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { House, ArrowRight, ShieldCheck, Network } from "lucide-react";
 import { api } from "../services/api";
-import type { Session } from "../types/device";
+import { autoLoginAllowed, setAutoLogin } from "../services/deviceSession";
+import type { Session, TailscaleStatus } from "../types/device";
 export function Login({ onLogin }: { onLogin: (s: Session) => void }) {
   const [username, setUsername] = useState("admin"),
     [password, setPassword] = useState(""),
     [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [tailscale, setTailscale] = useState<TailscaleStatus | null>(null),
+    [checking, setChecking] = useState(autoLoginAllowed),
+    started = useRef(false);
+  const tailscaleLogin = useCallback(async () => {
+    setBusy(true);
+    setError("");
+    try {
+      setAutoLogin(true);
+      onLogin(await api.tailscaleLogin());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Tailscale 登入失敗");
+    } finally {
+      setBusy(false);
+    }
+  }, [onLogin]);
+  // 已加入 Tailscale 且獲准的裝置直接登入；主動登出過的裝置改為顯示按鈕，由使用者決定。
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    api
+      .tailscaleStatus()
+      .then(async (status) => {
+        setTailscale(status);
+        if (status.available && autoLoginAllowed()) await tailscaleLogin();
+      })
+      .catch(() => setTailscale(null))
+      .finally(() => setChecking(false));
+  }, [tailscaleLogin]);
   async function submit(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -55,6 +84,34 @@ export function Login({ onLogin }: { onLogin: (s: Session) => void }) {
           <p className="eyebrow">WELCOME HOME</p>
           <h2>歡迎回家</h2>
           <p>登入你的智慧家庭管理平台。</p>
+          {checking ? (
+            <p role="status" className="tailscale-note">
+              正在確認這台裝置的 Tailscale 身分…
+            </p>
+          ) : (
+            tailscale?.enabled &&
+            (tailscale.available ? (
+              <>
+                <button
+                  type="button"
+                  className="primary tailscale-login"
+                  disabled={busy}
+                  onClick={() => void tailscaleLogin()}
+                >
+                  <Network size={18} />
+                  <span>
+                    以 Tailscale 身分登入
+                    <small>
+                      {tailscale.login} · {tailscale.device}
+                    </small>
+                  </span>
+                </button>
+                <p className="login-divider">或使用密碼</p>
+              </>
+            ) : (
+              <p className="tailscale-note">{tailscale.message}</p>
+            ))
+          )}
           <form onSubmit={submit}>
             <label>
               帳號

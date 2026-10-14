@@ -212,3 +212,80 @@ def test_built_frontend_can_share_api_origin(tmp_path, monkeypatch):
         assert client.get("/api/health").json()["mode"] == "mock"
         assert client.get("/api/devices").status_code == 401
         assert client.get("/docs").status_code == 200
+
+
+def test_installable_frontend_cache_policy(tmp_path, monkeypatch):
+    import app.main as main_module
+
+    static = tmp_path / "frontend" / "dist"
+    (static / "assets").mkdir(parents=True)
+    (static / "index.html").write_text("<html>測試頁面</html>", encoding="utf8")
+    (static / "sw.js").write_text("self;", encoding="utf8")
+    (static / "manifest.webmanifest").write_text("{}", encoding="utf8")
+    (static / "assets" / "index-abc123.js").write_text("app;", encoding="utf8")
+    monkeypatch.setattr(main_module, "ROOT", tmp_path, raising=False)
+    settings = Settings(
+        _env_file=None,
+        hub_admin_password="test-password-long",
+        hub_session_secret="s" * 40,
+        hub_database_url=f"sqlite:///{tmp_path / 'pwa.db'}",
+        hub_serve_frontend=True,
+    )
+    with TestClient(create_app(settings)) as client:
+        asset = client.get("/assets/index-abc123.js")
+        assert asset.headers["cache-control"] == "public, max-age=31536000, immutable"
+        for path in ("/", "/sw.js"):
+            assert client.get(path).headers["cache-control"] == "no-cache"
+        manifest = client.get("/manifest.webmanifest")
+        assert manifest.headers["content-type"].startswith("application/manifest+json")
+        assert client.get("/api/health").headers["cache-control"] == "no-store"
+        assert client.get("/assets/missing.js").headers["cache-control"] == "no-store"
+
+
+def test_public_origin_allows_private_domain_and_secure_cookie(tmp_path):
+    settings = Settings(
+        _env_file=None,
+        hub_admin_password="test-password-long",
+        hub_session_secret="s" * 40,
+        hub_database_url=f"sqlite:///{tmp_path / 'origin.db'}",
+        hub_public_origin="https://Hub.Example.com:443/",
+        hub_session_hours=168,
+    )
+    assert settings.hub_public_origin == "https://hub.example.com"
+    assert "https://hub.example.com" in settings.hub_allowed_origins
+    assert "http://127.0.0.1:5173" in settings.hub_allowed_origins
+    assert settings.hub_secure_cookie
+    with TestClient(create_app(settings), base_url="https://hub.example.com") as client:
+        response = client.post(
+            "/api/auth/login",
+            headers={"Origin": "https://hub.example.com"},
+            json={"username": "admin", "password": "test-password-long"},
+        )
+        assert response.status_code == 200
+        cookie = response.headers["set-cookie"].lower()
+        assert "max-age=604800" in cookie and "secure" in cookie
+        rejected = client.post(
+            "/api/auth/login",
+            headers={"Origin": "https://evil.example.com"},
+            json={"username": "admin", "password": "test-password-long"},
+        )
+        assert rejected.status_code == 403
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "http://hub.example.com",
+        "https://hub.example.com/app",
+        "https://user@hub.example.com",
+        "hub.example.com",
+    ],
+)
+def test_public_origin_rejects_unsafe_values(origin):
+    with pytest.raises(ValueError):
+        Settings(
+            _env_file=None,
+            hub_admin_password="x" * 20,
+            hub_session_secret="s" * 40,
+            hub_public_origin=origin,
+        )

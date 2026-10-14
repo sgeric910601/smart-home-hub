@@ -12,4 +12,10 @@ export default ts.config(
     plugins: { "react-hooks": hooks },
     rules: { ...hooks.configs.recommended.rules },
   },
+  {
+    files: ["pwa/*.js"],
+    languageOptions: {
+      globals: { ...globals.serviceworker, __HUB_VERSION__: "readonly", __HUB_PRECACHE__: "readonly" },
+    },
+  },
 );

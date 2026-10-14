@@ -4,6 +4,7 @@ import type {
   Operation,
   Scene,
   Session,
+  TailscaleStatus,
 } from "../types/device";
 import type { ImportDiscovery, ImportItem } from "../types/imports";
 import type { OnboardingData } from "../types/onboarding";
@@ -97,6 +98,8 @@ export const api = {
   me: () => session("/auth/me"),
   login: (username: string, password: string) =>
     session("/auth/login", { username, password }),
+  tailscaleStatus: () => request<TailscaleStatus>("/auth/tailscale"),
+  tailscaleLogin: () => session("/auth/tailscale", {}),
   logout: async () => {
     await request("/auth/logout", {});
     csrf = "";

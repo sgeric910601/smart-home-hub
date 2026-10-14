@@ -1,0 +1,50 @@
+# 樹莓派私人部署：兩個服務都使用主機網路，後端只監聽 127.0.0.1，Caddy 只監聽 Tailscale 位址。
+name: smart-home-hub-private
+services:
+  backend:
+    build: ../backend
+    env_file: ../.env
+    environment:
+      HUB_DATABASE_URL: sqlite:////app/data/hub.db
+      HUB_SERVE_FRONTEND: "false"
+    command:
+      - python
+      - -m
+      - uvicorn
+      - app.main:create_app
+      - --factory
+      - --host
+      - 127.0.0.1
+      - --port
+      - "8000"
+      - --proxy-headers
+      - --forwarded-allow-ips
+      - 127.0.0.1
+    network_mode: host
+    volumes:
+      - hub-data:/app/data
+      # 查詢連線裝置的 Tailscale 身分（唯讀查詢，不需 root）。
+      - /var/run/tailscale/tailscaled.sock:/var/run/tailscale/tailscaled.sock
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health',timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+  caddy:
+    build:
+      context: ..
+      dockerfile: deploy/caddy/Dockerfile
+    env_file: caddy.env
+    network_mode: host
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+volumes:
+  hub-data:
+  caddy-data:
+  caddy-config:

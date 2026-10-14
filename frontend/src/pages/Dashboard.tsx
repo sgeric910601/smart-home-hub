@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { homeEnvironment } from "../services/environment";
 import { api, ApiError } from "../services/api";
+import { clearDeviceData, setAutoLogin } from "../services/deviceSession";
 import type { Action, Session } from "../types/device";
 import { DeviceShortcut } from "../components/DeviceShortcut";
 import { DeviceDetails } from "../components/DeviceDetails";
@@ -75,6 +76,10 @@ export function Dashboard({
   );
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
+    // 安裝成 App 後，系統狀態列顏色跟著深淺色主題切換。
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute("content", dark ? "#151d1a" : "#f6f8f7");
     localStorage.setItem("hub-theme", dark ? "dark" : "light");
   }, [dark]);
   useEffect(() => {
@@ -165,6 +170,9 @@ export function Dashboard({
   async function logout() {
     try {
       await api.logout();
+      // 登出即清除這台裝置的快取與設定，並停止自動以 Tailscale 身分登入。
+      await clearDeviceData();
+      setAutoLogin(false);
       queryClient.clear();
       onLogout();
     } catch (e) {
@@ -247,7 +255,7 @@ export function Dashboard({
             </div>
             <button
               aria-label="登出"
-              title="登出"
+              title="登出並清除這台裝置的快取"
               onClick={() => void logout()}
             >
               <LogOut size={18} />

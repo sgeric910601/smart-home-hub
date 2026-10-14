@@ -4,7 +4,7 @@
 
 **v0.1.0 · 第一個公開預覽版本**
 
-以繁體中文操作的智慧家庭整合平台：React + TypeScript 前端、FastAPI 後端，透過 Home Assistant 統一管理設備，另提供可選的米家香氛機本機藍牙整合。首頁使用精簡捷徑，手機開啟全螢幕控制，平板與電腦使用右側詳情。
+以繁體中文操作的智慧家庭整合平台：React + TypeScript 前端、FastAPI 後端，透過 Home Assistant 統一管理設備，另提供可選的米家香氛機本機藍牙整合。首頁使用精簡捷徑，手機開啟全螢幕控制，平板與電腦使用右側詳情；可安裝成手機、平板與電腦 App，並透過 Tailscale 私人網址從任何地方安全使用。
 
 > 沒有設備也能先跑 Mock Mode。Real Mode 必須準備自己的 Home Assistant、帳號、Token 與 Entity 映射。範例資料不代表實機支援；本專案沒有隨附任何帳號、密碼或家庭設定。
 
@@ -39,7 +39,7 @@ Home Assistant 是獨立的設備整合服務，本專案是其上方的自製�
 準備 Git、Python 3.12+、Node.js 24 與 npm。Windows 建議 PowerShell 7。發布前實測環境為 Windows、Python 3.14.4、Node 24.15.0；其他平台請依測試結果自行驗證。
 
 ```sh
-git clone https://github.com/melvin0kuo/smart-home-hub.git
+git clone https://github.com/sgeric910601/smart-home-hub.git
 cd smart-home-hub
 ```
 
@@ -162,7 +162,18 @@ docker compose up --build -d
 
 入口 `http://127.0.0.1:8080`；一般停止使用 `docker compose down`，不要加刪除 volume 的選項。Real Mode 必須另外掛載私有 Entity 映射，並使用容器可以連到的 HA URL；容器內的 `127.0.0.1` 是容器本身。預設 Compose 不提供 BLE 存取。
 
-要以手機遠端使用，可採 VPN／Tailscale Serve，保留平台登入與 HTTPS，將自己的完整 Origin 加入 `HUB_ALLOWED_ORIGINS`。範例沒有公開網站或預設帳密，不預設啟用公網 Funnel。詳見 [私人存取](docs/PRIVATE_ACCESS.md)、[樹莓派移植](docs/RASPBERRY_PI.md)。
+### 手機、平板 App 與遠端使用
+
+建議的常駐方式是 [樹莓派／Linux 私人部署](docs/PRIVATE_DEPLOYMENT.md)：以自己的 Cloudflare 網域（例如 `https://homehub.example.com`）開啟，DNS 只指向主機的 Tailscale 私有位址，因此只有登入自己 Tailscale 的裝置連得到；憑證以 DNS 驗證取得，路由器不必開任何連接埠。
+
+```sh
+python3 deploy/setup_pi.py homehub.example.com
+```
+
+- 新裝置安裝 Tailscale 並登入同一帳號後，開啟網址即自動登入，再「加入主畫面」或「安裝應用程式」。
+- 白名單帳號（`HUB_TAILSCALE_ADMINS`／`HUB_TAILSCALE_VIEWERS`）免密碼；其他帳號與標籤裝置拒絕，密碼登入保留作備用。
+- 登出會撤銷登入、清除該裝置的快取與設定，並停止自動登入。
+- 只想臨時從手機連回單機，可改用較簡單的 [Tailscale Serve 私人存取](docs/PRIVATE_ACCESS.md)。不使用公網 Funnel。
 
 ## 7. 開發與驗證
 
@@ -177,14 +188,15 @@ npm run lint
 npm run build
 ```
 
-發布前本機結果：後端 58 項、前端 18 項通過；Lint、TypeScript 與 Vite Build 通過。Vite 仍有產物大小提示。安裝可選 BLE 依賴後才會執行其工作階段測試。
+目前本機結果：後端 107 項通過（1 項需 BLE 依賴而略過）、前端 28 項通過；Lint、TypeScript 與 Vite Build 通過，攝影機播放器改為按需載入後已無產物大小提示。安裝可選 BLE 依賴後才會執行其工作階段測試。
 
 E2E 僅能對 **Mock** 環境執行，不能拿真實設備當測試開關。CI 驗證原始碼與建置，不等於設備、實體手機或樹莓派測試。
 
 ```text
-frontend/       React、捷徑與詳情、API 客戶端
-backend/app/    FastAPI、權限、設備能力、HA／BLE Provider
+frontend/       React、捷徑與詳情、API 客戶端、PWA（public／pwa）
+backend/app/    FastAPI、權限、Tailscale 身分、設備能力、HA／BLE Provider
 backend/tests/  API、異常與確認測試
+deploy/         私人部署：Caddy、Docker Compose、設定腳本
 scripts/        環境建立與本機啟停
 docs/          安裝、架構、API 與設備文件
 ```
@@ -192,6 +204,7 @@ docs/          安裝、架構、API 與設備文件
 ## 文件與第一版範圍
 
 - [從零設定設備與映射](docs/SETUP_GUIDE.md)
+- [樹莓派／Linux 私人部署](docs/PRIVATE_DEPLOYMENT.md)
 - [系統架構](docs/ARCHITECTURE.md)／[API 設計](docs/API_DESIGN.md)
 - [環境檢查](docs/ENVIRONMENT_CHECK.md)／[開發計畫](docs/DEVELOPMENT_PLAN.md)
 - [v0.1.0 更新紀錄](CHANGELOG.md)

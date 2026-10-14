@@ -40,13 +40,21 @@ class Security:
                 raise HubError(403, "FORBIDDEN", "操作權限或 CSRF 驗證失敗。")
         return session
 
-    def login(self, username: str, password: str, address: str):
+    def throttle(self, address: str):
         current = monotonic()
         recent = [stamp for stamp in self.attempts.get(address, []) if current - stamp < 60]
         self.attempts[address] = recent
         if len(recent) >= 10:
             raise HubError(429, "RATE_LIMITED", "登入嘗試過於頻繁，請稍後再試。")
         recent.append(current)
+
+    def start_session(self, role: str):
+        token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
+        self.repository.create_session(self.digest(token), csrf, role, self.settings.hub_session_hours * 3600)
+        return token, {"role": role, "csrf_token": csrf, "mode": self.settings.hub_mode}
+
+    def login(self, username: str, password: str, address: str):
+        self.throttle(address)
         # 比較固定長度摘要，避免密碼字元編碼及長度影響比較方式。
         expected = (
             self.settings.hub_admin_password.get_secret_value()
@@ -59,7 +67,4 @@ class Security:
             hashlib.sha256(password.encode()).digest(), hashlib.sha256(expected.encode()).digest()
         ):
             raise HubError(401, "UNAUTHORIZED", "帳號或密碼不正確。")
-        token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
-        role = "admin" if username == "admin" else "viewer"
-        self.repository.create_session(self.digest(token), csrf, role)
-        return token, {"role": role, "csrf_token": csrf, "mode": self.settings.hub_mode}
+        return self.start_session("admin" if username == "admin" else "viewer")
