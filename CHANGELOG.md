@@ -4,7 +4,7 @@
 
 - 可安裝成手機、平板與電腦 App（PWA）：manifest、圖示、Service Worker 與離線說明頁；API 與攝影機串流不經快取。
 - 攝影機播放器改為按下播放才載入並改用精簡版，首頁主程式由 899 KB 降至 328 KB。
-- 新增樹莓派／Linux 私人部署：Caddy 只監聽 Tailscale 位址並拒絕其他來源，以 Cloudflare DNS 驗證取得正式 HTTPS 憑證；`deploy/setup_pi.py` 一次設定 DNS、憑證 Token 與 `.env`。
+- 新增樹莓派／Linux 私人部署：Caddy 只監聽 Tailscale 位址並拒絕其他來源，以 Cloudflare DNS 驗證取得正式 HTTPS 憑證；`deploy/setup_host.py` 一次設定 DNS、憑證 Token 與 `.env`；可選 Docker 或原生 systemd（適合已有 Waydroid、LXC 等服務的工作站）。
 - 新增 Tailscale 身分登入：白名單帳號免密碼，標籤裝置與未授權帳號拒絕；密碼登入保留。
 - 登出時一併清除該裝置的離線快取、Service Worker 與本機設定，並停止自動登入。
 - 新增 `HUB_PUBLIC_ORIGIN`、`HUB_SESSION_HOURS`；建置檔長期快取、頁面每次確認；觸控裝置輸入框避免 iOS 自動放大。

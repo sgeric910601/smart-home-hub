@@ -27,7 +27,9 @@
 
 可用 Ubuntu 22.04／24.04，或 Raspberry Pi 4／5 的 64 位元 Raspberry Pi OS（Bookworm 以上）。主機需 24 小時開機；放在學校、公司等共用網路時，務必完成第 7 節的加固。
 
-1. 安裝 Docker Engine 與 Compose 外掛：依 [Docker 官方 Debian 安裝指南](https://docs.docker.com/engine/install/debian/) 使用官方 apt 套件庫（含 GPG 簽章驗證），完成後執行 `sudo usermod -aG docker $USER` 並重新登入。
+1. 選擇部署方式：
+   - **Docker**（樹莓派等專用主機）：依 [Docker 官方安裝指南](https://docs.docker.com/engine/install/) 使用官方 apt 套件庫（含 GPG 簽章驗證），完成後執行 `sudo usermod -aG docker $USER` 並重新登入。
+   - **原生 systemd**（已有其他服務的工作站）：不安裝 Docker。Docker 會把 iptables 的轉送預設改為丟棄，常使 Waydroid、LXC、libvirt 等既有虛擬網路斷線。需要 Python 3.12+ 與 Node.js 24。
 2. 安裝 Tailscale：依 [Tailscale 官方 Linux 指南](https://tailscale.com/kb/1031/install-linux) 加入官方 apt 套件庫，再執行：
 
     ```sh
@@ -54,9 +56,31 @@
 
 ## 3. 執行設定腳本
 
+Docker 部署：
+
 ```sh
-python3 deploy/setup_pi.py homehub.example.com
+python3 deploy/setup_host.py homehub.example.com
 ```
+
+原生 systemd 部署：先建立後端環境、建置前端與 Caddy（皆不需 root），再執行設定腳本：
+
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install -r backend/requirements.txt
+npm ci --prefix frontend
+npm run build --prefix frontend
+bash deploy/native/build_caddy.sh
+python3 deploy/setup_host.py --native homehub.example.com
+```
+
+`build_caddy.sh` 會把官方 Go 工具鏈下載到 `~/.local/go`（依 go.dev 公布的 SHA-256 驗證），再以 xcaddy 編譯含 Cloudflare DNS 模組的 Caddy；Go 模組經 sum.golang.org 驗證。設定腳本最後以 `pkexec` 跳出系統密碼視窗，安裝兩個 systemd 服務：
+
+| 服務 | 執行身分 | 監聽 |
+| --- | --- | --- |
+| `smart-home-hub` | 專案擁有者 | `127.0.0.1:8000` |
+| `smart-home-hub-caddy` | 專案擁有者，僅授予綁定低埠號的權限 | Tailscale 位址的 443／80 |
+
+移除服務：`pkexec bash deploy/native/install.sh --uninstall`（保留專案、`.env` 與憑證）。
 
 腳本會依序：
 
@@ -66,11 +90,11 @@ python3 deploy/setup_pi.py homehub.example.com
 4. 在 Cloudflare 建立或更新 `A`／`AAAA` 紀錄，固定為「僅 DNS」。
 5. 詢問是否立即 `docker compose -f deploy/docker-compose.yml up -d --build`。
 
-第一次建置會編譯前端與含 Cloudflare 模組的 Caddy，樹莓派約需 10–20 分鐘。之後查看狀態：
+Docker 第一次建置會編譯前端與含 Cloudflare 模組的 Caddy，樹莓派約需 10–20 分鐘。查看狀態：
 
 ```sh
-docker compose -f deploy/docker-compose.yml ps
-docker compose -f deploy/docker-compose.yml logs -f caddy
+docker compose -f deploy/docker-compose.yml logs -f caddy      # Docker
+journalctl -u smart-home-hub-caddy -f                          # 原生 systemd
 ```
 
 Caddy 日誌出現 `certificate obtained successfully` 即完成。
@@ -120,7 +144,9 @@ HUB_TAILSCALE_VIEWERS=["family@example.com"]
 
 ## 7. 共用網路（學校、公司）加固
 
-主機和陌生人在同一個網段時，除了 Caddy 只綁定 Tailscale，再加上主機防火牆，讓 Ubuntu 上的任何服務都不會對該網段開放。
+主機和陌生人在同一個網段時，除了 Caddy 只綁定 Tailscale，再加上主機防火牆，讓主機上的任何服務都不會對該網段開放。
+
+> 主機已有其他服務（遠端桌面、學校監控代理等）時，先以 `sudo ufw status verbose` 查看現有規則，不要直接改預設政策；改為只針對本平台補上 `sudo ufw allow in on tailscale0 to any port 443,80 proto tcp`，並以下方的驗證步驟確認。
 
 1. 先確認能透過 Tailscale 連進主機（`ssh <使用者>@<主機的 Tailscale IP>` 或 Tailscale SSH），避免啟用防火牆後把自己鎖在外面。
 2. 啟用 ufw：只允許 Tailscale 網卡進入，並開放 Tailscale 直連用的 UDP 41641。
@@ -180,10 +206,11 @@ sudo tailscale up --advertise-routes=192.168.1.0/24
 
 ```sh
 git pull
-docker compose -f deploy/docker-compose.yml up -d --build
+docker compose -f deploy/docker-compose.yml up -d --build      # Docker
+npm run build --prefix frontend && pkexec systemctl restart smart-home-hub smart-home-hub-caddy   # 原生
 ```
 
-- Tailscale IP 改變（例如重新加入 tailnet）：`python3 deploy/setup_pi.py --dns-only`。
+- Tailscale IP 改變（例如重新加入 tailnet）：`python3 deploy/setup_host.py --dns-only`。
 - 備份：`hub-data` volume 含 SQLite 操作紀錄；`caddy-data` 含憑證，可重新申請。
 - 更換 Cloudflare Token：重新執行設定腳本並選擇更換 Token。
 

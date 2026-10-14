@@ -1,8 +1,9 @@
-"""在樹莓派設定私人部署：Tailscale 位址、Cloudflare DNS、平台 .env，並可直接啟動容器。
+"""設定私人部署（樹莓派／Ubuntu）：Tailscale 位址、Cloudflare DNS、平台 .env，並可直接啟動。
 
 用法：
-    python3 deploy/setup_pi.py homehub.example.com      # 第一次設定或重新設定
-    python3 deploy/setup_pi.py --dns-only               # Tailscale 位址改變後只更新 DNS
+    python3 deploy/setup_host.py homehub.example.com            # Docker 部署
+    python3 deploy/setup_host.py --native homehub.example.com   # systemd 原生部署（不裝 Docker）
+    python3 deploy/setup_host.py --dns-only                     # Tailscale 位址改變後只更新 DNS
 """
 
 import argparse
@@ -21,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CADDY_ENV = ROOT / "deploy" / "caddy.env"
 HUB_ENV = ROOT / ".env"
 COMPOSE = ROOT / "deploy" / "docker-compose.yml"
+NATIVE_INSTALL = ROOT / "deploy" / "native" / "install.sh"
 API = "https://api.cloudflare.com/client/v4"
 TAILNET = (ipaddress.ip_network("100.64.0.0/10"), ipaddress.ip_network("fd7a:115c:a1e0::/48"))
 
@@ -141,8 +143,8 @@ def ask(prompt: str, default: str = ""):
     return answer or default
 
 
-def configure(domain: str):
-    for command in ("docker", "tailscale"):
+def configure(domain: str, native: bool):
+    for command in ("tailscale",) if native else ("docker", "tailscale"):
         if not shutil.which(command):
             fail(f"缺少 {command}，請先依 docs/PRIVATE_DEPLOYMENT.md 安裝")
     addresses = tailscale_addresses()
@@ -191,23 +193,37 @@ def main():
     )
     parser.add_argument("domain", nargs="?", help="私人網址，例如 homehub.example.com")
     parser.add_argument("--dns-only", action="store_true", help="只依目前 Tailscale 位址更新 DNS 與綁定位址")
+    parser.add_argument("--native", action="store_true", help="以 systemd 服務部署，不使用 Docker")
     args = parser.parse_args()
     if args.dns_only:
         current = read_env(CADDY_ENV)
         if not current.get("HUB_DOMAIN") or not current.get("CLOUDFLARE_API_TOKEN"):
-            fail("尚未完成設定，請先執行 python3 deploy/setup_pi.py <網域>")
+            fail("尚未完成設定，請先執行 python3 deploy/setup_host.py <網域>")
         addresses = tailscale_addresses()
         write_env(CADDY_ENV, {"HUB_BIND": " ".join(addresses)})
         update_dns(current["HUB_DOMAIN"], current["CLOUDFLARE_API_TOKEN"], addresses)
     else:
         if not args.domain:
-            parser.error("請提供網域，例如 python3 deploy/setup_pi.py homehub.example.com")
-        configure(args.domain.strip().lower().rstrip("."))
-    if ask("要現在建置並啟動平台嗎？(Y/n)", "Y").lower() != "n":
+            parser.error("請提供網域，例如 python3 deploy/setup_host.py homehub.example.com")
+        configure(args.domain.strip().lower().rstrip("."), args.native)
+    if args.native:
+        start_native()
+    elif ask("要現在建置並啟動平台嗎？(Y/n)", "Y").lower() != "n":
         subprocess.run(["docker", "compose", "-f", str(COMPOSE), "up", "-d", "--build"], check=True)
         print(f"✓ 已啟動。開啟 https://{read_env(CADDY_ENV)['HUB_DOMAIN']}（裝置需已登入 Tailscale）")
     else:
         print(f"稍後執行：docker compose -f {COMPOSE.relative_to(ROOT)} up -d --build")
+
+
+def start_native():
+    """原生部署：安裝或重新啟動 systemd 服務需要 root，經 pkexec 跳出系統密碼視窗。"""
+    if not (ROOT / "deploy" / "native" / "build" / "caddy").exists():
+        print("尚未建置 Caddy，請先執行：bash deploy/native/build_caddy.sh")
+        return
+    if ask("要現在安裝並啟動系統服務嗎？會跳出系統密碼視窗 (Y/n)", "Y").lower() != "n":
+        subprocess.run(["pkexec", "bash", str(NATIVE_INSTALL)], check=True)
+    else:
+        print(f"稍後執行：pkexec bash {NATIVE_INSTALL.relative_to(ROOT)}")
 
 
 if __name__ == "__main__":

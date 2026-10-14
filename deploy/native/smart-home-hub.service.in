@@ -1,0 +1,21 @@
+[Unit]
+Description=Smart Home Hub 後端（只監聽 127.0.0.1）
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@USER@
+WorkingDirectory=@ROOT@/backend
+Environment=HUB_SERVE_FRONTEND=false
+ExecStart=@ROOT@/.venv/bin/python -m uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips 127.0.0.1
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=@ROOT@/backend/data
+
+[Install]
+WantedBy=multi-user.target

@@ -167,7 +167,8 @@ docker compose up --build -d
 建議的常駐方式是 [樹莓派／Linux 私人部署](docs/PRIVATE_DEPLOYMENT.md)：以自己的 Cloudflare 網域（例如 `https://homehub.example.com`）開啟，DNS 只指向主機的 Tailscale 私有位址，因此只有登入自己 Tailscale 的裝置連得到；憑證以 DNS 驗證取得，路由器不必開任何連接埠。
 
 ```sh
-python3 deploy/setup_pi.py homehub.example.com
+python3 deploy/setup_host.py homehub.example.com            # Docker
+python3 deploy/setup_host.py --native homehub.example.com   # systemd，不裝 Docker
 ```
 
 - 新裝置安裝 Tailscale 並登入同一帳號後，開啟網址即自動登入，再「加入主畫面」或「安裝應用程式」。

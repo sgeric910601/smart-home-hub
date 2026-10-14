@@ -18,3 +18,4 @@ compose.override.yml
 
 # 私人部署的 Cloudflare Token 與 Tailscale 位址
 deploy/caddy.env
+deploy/native/build/
