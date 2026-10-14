@@ -221,6 +221,7 @@ npm run build --prefix frontend && pkexec systemctl restart smart-home-hub smart
 | 開啟網址顯示「連不到家庭平台」 | 裝置的 Tailscale 是否開啟；`tailscale ping <樹莓派>` |
 | 瀏覽器找不到網址 | 部分路由器或 DNS 會擋「公開網域解析到私有 IP」（DNS rebinding 保護）；在 Tailscale 後台 DNS 啟用 MagicDNS 並設定全域 DNS（例如 1.1.1.1），或在路由器將此網域加入例外 |
 | Caddy 一直重啟 | 開機時 Tailscale 尚未取得 IP 會暫時綁定失敗，會自動重試；持續失敗時檢查 `deploy/caddy.env` 的 `HUB_BIND` |
-| 憑證申請失敗 | Token 權限、網域是否在該 Cloudflare 帳號、`docker compose logs caddy` |
+| 憑證申請失敗 | Token 權限、網域是否在該 Cloudflare 帳號、`docker compose logs caddy`／`journalctl -u smart-home-hub-caddy` |
+| 日誌出現 `checking DNS propagation … dial tcp …:53: i/o timeout` | 所在網路擋了某個 DNS 解析器（例如校園網路擋 1.0.0.1）；用 `dig @<IP> spkuan.cc NS` 找出可用的，在 `deploy/caddy.env` 設定 `HUB_DNS_RESOLVERS=1.1.1.1 8.8.8.8` 後重新啟動 Caddy |
 | 沒有自動登入 | 登入頁會顯示原因：帳號不在白名單、標籤裝置或主機無法查詢 Tailscale；也可能是先前主動登出過，按「以 Tailscale 身分登入」 |
 | 後端無法查詢 Tailscale | 確認 `/var/run/tailscale/tailscaled.sock` 存在，且已掛載到 backend 容器 |
